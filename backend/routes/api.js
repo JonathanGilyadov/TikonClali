@@ -134,4 +134,103 @@ router.get("/chapters", (req, res, next) => {
   }
 });
 
+// POST /api/chapter/:id/release
+router.post("/api/chapter/:id/release", async function (req, res) {
+  var anonId = req.anonId;
+  var chapterId = req.params.id;
+
+  try {
+    var chapter = await prisma.chapter.findUnique({ where: { id: chapterId } });
+
+    if (!chapter || chapter.lockedBy !== anonId) {
+      return res
+        .status(403)
+        .json({ error: "You do not have permission to release this chapter" });
+    }
+
+    var updated = await prisma.chapter.update({
+      where: { id: chapterId },
+      data: {
+        status: "released",
+        lockedBy: null,
+        lockedAt: null,
+      },
+    });
+
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/chapter/:id/complete
+router.post("/api/chapter/:id/complete", async function (req, res) {
+  var anonId = req.anonId;
+  var chapterId = req.params.id;
+
+  try {
+    var chapter = await prisma.chapter.findUnique({ where: { id: chapterId } });
+
+    if (!chapter || chapter.lockedBy !== anonId) {
+      return res
+        .status(403)
+        .json({ error: "You do not have permission to complete this chapter" });
+    }
+
+    var updated = await prisma.chapter.update({
+      where: { id: chapterId },
+      data: {
+        status: "read",
+        lockedBy: null,
+        lockedAt: null,
+      },
+    });
+
+    // Now check if ALL chapters in the request are read
+    var unreadCount = await prisma.chapter.count({
+      where: {
+        requestId: chapter.requestId,
+        status: { not: "read" },
+      },
+    });
+
+    // If all read, restart cycle (duplicate all chapters, status: 'unread')
+    if (unreadCount === 0) {
+      var originalChapters = await prisma.chapter.findMany({
+        where: {
+          requestId: chapter.requestId,
+        },
+        orderBy: { number: "asc" },
+      });
+
+      for (var i = 0; i < originalChapters.length; i++) {
+        var c = originalChapters[i];
+        await prisma.chapter.create({
+          data: {
+            requestId: c.requestId,
+            number: c.number,
+            status: "unread",
+            lockedBy: null,
+            lockedAt: null,
+          },
+        });
+      }
+
+      // Optionally increment a cycle count field on the request
+      await prisma.request.update({
+        where: { id: chapter.requestId },
+        data: {
+          cyclesCompleted: { increment: 1 },
+        },
+      });
+    }
+
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 module.exports = router;

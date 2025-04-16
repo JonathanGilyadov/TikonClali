@@ -1,38 +1,89 @@
 // src/api/api.js
-const API_BASE = "http://localhost:3001/api";
+const API_BASE = "/api";
+
+const getAnonId = () => {
+  let id = localStorage.getItem("anonUserId");
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem("anonUserId", id);
+  }
+  return id;
+};
+
+const headers = () => ({
+  "x-anon-id": getAnonId(),
+  "Content-Type": "application/json",
+});
+
+const handle = async (res) => {
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "שגיאת שרת");
+  }
+  return res.json();
+};
 
 export const fetchChapters = async () => {
-  const res = await fetch(`${API_BASE}/chapters`);
-  return res.json();
+  const res = await fetch(`${API_BASE}/chapters`, {
+    headers: headers(),
+  });
+  return handle(res);
 };
 
 export const fetchRequests = async (searchQuery = "") => {
   const params = new URLSearchParams();
   if (searchQuery) params.append("search", searchQuery);
 
-  const res = await fetch(`http://localhost:3001/api/requests?${params}`);
-  return res.json();
+  const res = await fetch(`${API_BASE}/requests?${params}`, {
+    headers: headers(),
+  });
+  return handle(res);
 };
 
 export const fetchRequestById = async (id) => {
-  const res = await fetch(`${API_BASE}/requests/${id}`);
-  return res.json();
+  const res = await fetch(`${API_BASE}/requests/${id}`, {
+    headers: headers(),
+  });
+  return handle(res);
 };
 
 export const createRequest = async (requestData) => {
   const res = await fetch(`${API_BASE}/requests`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: headers(),
     body: JSON.stringify(requestData),
   });
-  return res.json();
+  return handle(res);
 };
 
 export const updateRequestProgress = async (requestId, chapterId) => {
   const res = await fetch(`${API_BASE}/requests/${requestId}/progress`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: headers(),
     body: JSON.stringify({ chapterId }),
   });
-  return res.json();
+  return handle(res);
 };
+
+export async function fetchNextChapter(requestId) {
+  const res = await fetch(`${API_BASE}/request/${requestId}/next-chapter`, {
+    headers: headers(),
+  });
+  return handle(res);
+}
+
+export async function completeChapter(chapterId) {
+  const res = await fetch(`${API_BASE}/chapter/${chapterId}/complete`, {
+    method: "POST",
+    headers: headers(),
+  });
+  return handle(res);
+}
+
+export async function releaseChapter(chapterId) {
+  const res = await fetch(`${API_BASE}/chapter/${chapterId}/release`, {
+    method: "POST",
+    headers: headers(),
+  });
+  return handle(res);
+}

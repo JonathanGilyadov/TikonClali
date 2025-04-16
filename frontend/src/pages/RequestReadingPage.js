@@ -5,141 +5,167 @@ import {
   Paper,
   Box,
   Button,
-  Chip,
-  LinearProgress,
+  CircularProgress,
+  Snackbar,
+  Alert,
 } from "@mui/material";
 import { useParams, useNavigate } from "react-router-dom";
-import { Snackbar, Alert } from "@mui/material";
-import {
-  fetchChapters,
-  fetchRequestById,
-  updateRequestProgress,
-} from "../api/api";
-import confetti from "canvas-confetti";
+import { fetchNextChapter, completeChapter, releaseChapter } from "../api/api";
 
 const RequestReadingPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [request, setRequest] = useState(null);
-  const [chapters, setChapters] = useState([]);
-  const [progress, setProgress] = useState([]);
-  const [cycleCount, setCycleCount] = useState(0);
+  const [chapter, setChapter] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [showSnackbar, setShowSnackbar] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(null);
+  const [lockExpired, setLockExpired] = useState(false);
 
-  useEffect(() => {
-    const loadData = async () => {
-      const [req, allChapters] = await Promise.all([
-        fetchRequestById(id),
-        fetchChapters(),
-      ]);
+  const loadChapter = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchNextChapter(id);
+      setChapter(data);
+      setLockExpired(false);
 
-      setRequest(req);
-      setChapters(allChapters);
-      setProgress(req.progress || []);
-      setCycleCount(req.cycleCount || 0);
-    };
+      const lockedUntil = new Date(
+        new Date(data.lockedAt).getTime() + 20 * 60000,
+      );
 
-    loadData();
-  }, [id]);
+      const updateTime = () => {
+        const diff = lockedUntil.getTime() - Date.now();
+        if (diff <= 0) {
+          setTimeLeft(0);
+          setLockExpired(true);
+          clearInterval(timerId);
+        } else {
+          setTimeLeft(diff);
+        }
+      };
 
-  const handleMarkRead = async (chapterId) => {
-    const updated = await updateRequestProgress(request.id, chapterId);
-
-    setRequest(updated);
-    setProgress(updated.progress);
-    setCycleCount(updated.cycleCount);
-
-    // Detect cycle reset
-    if (updated.cycleCount > cycleCount) {
-      confetti({
-        particleCount: 100,
-        spread: 80,
-        origin: { y: 0.6 },
-      });
-
-      setShowSnackbar(true);
+      updateTime();
+      const timerId = setInterval(updateTime, 1000);
+      return () => clearInterval(timerId);
+    } catch {
+      setChapter(null);
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (!request || chapters.length === 0) {
-    return (
-      <Container sx={{ mt: 4 }}>
-        <Typography variant="h6" align="center">
-          טוען...
-        </Typography>
-      </Container>
-    );
-  }
+  useEffect(() => {
+    loadChapter();
+  }, [id]);
 
-  const selectedChapters = request.chapterIndices.map((i) => chapters[i]);
-  const unread = selectedChapters.filter((ch) => !progress.includes(ch.id));
-  const percent = (progress.length / selectedChapters.length) * 100;
-  const isComplete = unread.length === 0;
-  const nextChapter = unread[0];
+  const handleComplete = async () => {
+    await completeChapter(chapter.id);
+    setShowSnackbar(true);
+    loadChapter();
+  };
+
+  const handleRelease = async () => {
+    await releaseChapter(chapter.id);
+    loadChapter();
+  };
 
   return (
     <Container maxWidth="sm" sx={{ mt: 4 }}>
       <Paper sx={{ p: 4 }}>
         <Typography variant="h5" gutterBottom>
-          קריאה עבור: {request.name}
-        </Typography>
-        <Typography color="text.secondary">מטרה: {request.purpose}</Typography>
-        {request.notes && (
-          <Typography sx={{ mt: 1 }}>הערות: {request.notes}</Typography>
-        )}
-
-        <Typography align="center" color="text.secondary" sx={{ mt: 2 }}>
-          מספר מחזורים שהושלמו: {request.cycleCount || 0}
+          קריאת פרק עבור בקשה #{id}
         </Typography>
 
-        <Box sx={{ mt: 3, mb: 2 }}>
-          <LinearProgress
-            variant="determinate"
-            value={percent}
-            sx={{ transform: "scaleX(-1)" }}
-            color={isComplete ? "success" : "primary"}
-          />
-          <Typography align="center" variant="body2" sx={{ mt: 1 }}>
-            {progress.length}/{selectedChapters.length}
-          </Typography>
-        </Box>
+        {loading ? (
+          <Box textAlign="center" sx={{ mt: 4 }}>
+            <CircularProgress />
+            <Typography sx={{ mt: 2 }}>טוען פרק לקריאה...</Typography>
+          </Box>
+        ) : chapter ? (
+          lockExpired ? (
+            <Box textAlign="center">
+              <Typography variant="h6" sx={{ mb: 2 }}>
+                ⏰ זמן הקריאה של הפרק נגמר.
+              </Typography>
+              <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+                יתכן שמישהו אחר נעל את הפרק. תוכל לנסות לנעול אותו מחדש.
+              </Typography>
+              <Button
+                variant="contained"
+                onClick={() => {
+                  setLockExpired(false);
+                  loadChapter();
+                }}
+              >
+                🔁 נסה לנעול שוב
+              </Button>
+            </Box>
+          ) : (
+            <>
+              {timeLeft !== null && (
+                <Typography
+                  align="center"
+                  color="text.secondary"
+                  sx={{ mb: 2 }}
+                >
+                  זמן שנותר לנעילה: {Math.floor(timeLeft / 60000)}:
+                  {String(Math.floor((timeLeft % 60000) / 1000)).padStart(
+                    2,
+                    "0",
+                  )}
+                </Typography>
+              )}
 
-        {isComplete ? (
-          <Chip label="הבקשה הושלמה!" color="success" sx={{ mt: 2 }} />
+              <Typography variant="h6" align="center" sx={{ mb: 2 }}>
+                {chapter.title || `פרק ${chapter.number}`}
+              </Typography>
+              <Typography
+                variant="body1"
+                align="center"
+                sx={{ whiteSpace: "pre-line", mb: 3 }}
+              >
+                {chapter.content}
+              </Typography>
+
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <Button
+                  variant="contained"
+                  color="success"
+                  onClick={handleComplete}
+                >
+                  ✅ סיימתי לקרוא
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="warning"
+                  onClick={handleRelease}
+                >
+                  🟡 שחרר - לא הצלחתי לקרוא
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={handleRelease}
+                >
+                  🔴 שחרר - טקסט לא ברור
+                </Button>
+              </Box>
+            </>
+          )
         ) : (
-          <>
-            <Typography variant="h6" gutterBottom align="center">
-              {nextChapter.title}
-            </Typography>
-            <Typography
-              variant="subtitle1"
-              color="text.secondary"
-              align="center"
-              gutterBottom
-            >
-              {nextChapter.mizmor}
-            </Typography>
-            <Typography variant="body1" align="center" sx={{ mb: 3 }}>
-              {nextChapter.content}
-            </Typography>
-            <Button
-              variant="contained"
-              fullWidth
-              onClick={() => handleMarkRead(nextChapter.id)}
-            >
-              סמן כנקרא ועבור לפרק הבא
-            </Button>
-          </>
+          <Typography align="center" sx={{ mt: 4 }}>
+            אין כרגע פרקים זמינים לקריאה.
+          </Typography>
         )}
       </Paper>
 
       <Button variant="text" sx={{ mt: 2 }} onClick={() => navigate("/")}>
         חזרה לרשימת הבקשות
       </Button>
+
       <Snackbar
         open={showSnackbar}
-        autoHideDuration={4000}
+        autoHideDuration={3000}
         onClose={() => setShowSnackbar(false)}
         anchorOrigin={{ vertical: "top", horizontal: "center" }}
       >
@@ -149,7 +175,7 @@ const RequestReadingPage = () => {
           variant="filled"
           sx={{ width: "100%" }}
         >
-          🎉 סבב קריאה הושלם! מתחילים מחדש
+          🎉 הפרק סומן כנקרא!
         </Alert>
       </Snackbar>
     </Container>
