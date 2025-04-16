@@ -6,20 +6,16 @@ import {
   Typography,
   LinearProgress,
   Button,
-  Chip,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 
 const RequestRow = ({ request, chapters }) => {
   const navigate = useNavigate();
 
-  const selected = request.chapterIndices.map((i) => chapters[i]);
-  const completed = selected.filter((ch) =>
-    request.progress?.includes(ch.id),
-  ).length;
-
-  const percent = (completed / selected.length) * 100;
-  const isComplete = completed === selected.length;
+  const completed = request.readChapters || 0;
+  const total = request.totalChapters || 1;
+  const percent = (completed / total) * 100;
+  const isComplete = completed === total;
 
   return (
     <TableRow>
@@ -36,7 +32,7 @@ const RequestRow = ({ request, chapters }) => {
             />
           </Box>
           <Typography variant="body2">
-            {completed}/{selected.length}
+            {completed}/{total}
           </Typography>
         </Box>
       </TableCell>

@@ -24,8 +24,10 @@ const handle = async (res) => {
 };
 
 export const fetchChapters = async () => {
-  const res = await fetch(`${API_BASE}/chapters`, {
-    headers: headers(),
+  const res = await fetch("/api/chapters", {
+    headers: {
+      "x-anon-id": getAnonId(),
+    },
   });
   return handle(res);
 };

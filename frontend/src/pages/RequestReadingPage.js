@@ -1,4 +1,3 @@
-// src/pages/RequestReadingPage.js
 import React, { useEffect, useState } from "react";
 import {
   Container,
@@ -16,6 +15,7 @@ import {
   completeChapter,
   releaseChapter,
   fetchChapters,
+  fetchRequestById,
 } from "../api/api";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import WhatsAppIcon from "@mui/icons-material/WhatsApp";
@@ -26,6 +26,7 @@ const RequestReadingPage = () => {
 
   const [chapter, setChapter] = useState(null);
   const [chaptersData, setChaptersData] = useState([]);
+  const [requestInfo, setRequestInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showSnackbar, setShowSnackbar] = useState(false);
   const [showCopied, setShowCopied] = useState(false);
@@ -36,57 +37,52 @@ const RequestReadingPage = () => {
   useEffect(() => {
     const loadAll = async () => {
       try {
-        const [chapterData] = await Promise.all([
+        const [chaptersJson, chapterData, request] = await Promise.all([
           fetchChapters(),
-          loadChapter(),
+          fetchNextChapter(id),
+          fetchRequestById(id),
         ]);
-        setChaptersData(chapterData);
+        setChaptersData(chaptersJson);
+        setChapter(chapterData);
+        setRequestInfo(request);
+        setErrorMessage("");
       } catch (err) {
+        setChapter(null);
         setErrorMessage(err.message);
+      } finally {
+        setLoading(false);
       }
     };
     loadAll();
   }, [id]);
 
-  const loadChapter = async () => {
-    setLoading(true);
-    try {
-      const data = await fetchNextChapter(id);
-      setChapter(data);
-      setLockExpired(false);
-      setErrorMessage("");
+  useEffect(() => {
+    if (!chapter?.lockedAt) return;
 
-      const lockedUntil = new Date(
-        new Date(data.lockedAt).getTime() + 20 * 60000,
-      );
+    const lockedUntil = new Date(
+      new Date(chapter.lockedAt).getTime() + 20 * 60000,
+    );
 
-      const updateTime = () => {
-        const diff = lockedUntil.getTime() - Date.now();
-        if (diff <= 0) {
-          setTimeLeft(0);
-          setLockExpired(true);
-          clearInterval(timerId);
-        } else {
-          setTimeLeft(diff);
-        }
-      };
+    const interval = setInterval(() => {
+      const diff = lockedUntil.getTime() - Date.now();
 
-      updateTime();
-      const timerId = setInterval(updateTime, 1000);
-      return () => clearInterval(timerId);
-    } catch (err) {
-      setChapter(null);
-      setErrorMessage(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (diff <= 0) {
+        setTimeLeft(0);
+        setLockExpired(true);
+        clearInterval(interval);
+      } else {
+        setTimeLeft(diff);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [chapter?.lockedAt]);
 
   const handleComplete = async () => {
     try {
       await completeChapter(chapter.id);
       setShowSnackbar(true);
-      loadChapter();
+      window.location.reload(); // or re-fetch all data
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -95,7 +91,7 @@ const RequestReadingPage = () => {
   const handleRelease = async () => {
     try {
       await releaseChapter(chapter.id);
-      loadChapter();
+      window.location.reload(); // or re-fetch all data
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -125,6 +121,12 @@ const RequestReadingPage = () => {
           קריאת פרק עבור בקשה #{id}
         </Typography>
 
+        {requestInfo && (
+          <Typography align="center" color="text.secondary" sx={{ mt: 2 }}>
+            📚 מספר סבבי קריאה שהושלמו: {requestInfo.cycleCount}
+          </Typography>
+        )}
+
         {errorMessage && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {errorMessage}
@@ -147,10 +149,7 @@ const RequestReadingPage = () => {
               </Typography>
               <Button
                 variant="contained"
-                onClick={() => {
-                  setLockExpired(false);
-                  loadChapter();
-                }}
+                onClick={() => window.location.reload()}
               >
                 🔁 נסה לנעול שוב
               </Button>

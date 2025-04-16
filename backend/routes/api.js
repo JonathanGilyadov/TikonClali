@@ -6,7 +6,7 @@ const path = require("path");
 const { validateNewRequest, validateInt } = require("../utils/validate");
 
 // GET /requests
-router.get("/requests", async (req, res, next) => {
+router.get("/requests", async (req, res) => {
   try {
     const { search } = req.query;
 
@@ -14,22 +14,38 @@ router.get("/requests", async (req, res, next) => {
       where: search
         ? {
             name: {
-              contains: search.toLowerCase(),
+              contains: search,
+              mode: "insensitive",
             },
           }
         : {},
       orderBy: { createdAt: "desc" },
+      take: 20,
     });
 
-    const parsed = requests.map((r) => ({
-      ...r,
-      chapterIndices: JSON.parse(r.chapterIndices),
-      progress: JSON.parse(r.progress),
-    }));
+    const enriched = await Promise.all(
+      requests.map(async (r) => {
+        const recentChapters = await prisma.chapter.findMany({
+          where: { requestId: r.id },
+          orderBy: { id: "desc" },
+        });
 
-    res.json(parsed);
+        const read = recentChapters.filter((ch) => ch.status === "read").length;
+
+        return {
+          ...r,
+          chapterIndices: JSON.parse(r.chapterIndices),
+          progress: JSON.parse(r.progress),
+          totalChapters: recentChapters.length,
+          readChapters: read,
+        };
+      }),
+    );
+
+    res.json(enriched);
   } catch (err) {
-    next(err);
+    console.error("Failed to load requests:", err);
+    res.status(500).json({ error: "שגיאה בטעינת הבקשות" });
   }
 });
 
@@ -198,11 +214,20 @@ router.post("/chapter/:id/complete", async function (req, res) {
       where: { id: chapterId },
     });
 
-    if (!chapter || chapter.lockedBy !== anonId) {
+    if (!chapter) {
+      return res.status(404).json({ error: "הפרק לא נמצא" });
+    }
+
+    if (chapter.status === "read") {
+      return res.status(200).json(chapter);
+    }
+
+    if (chapter.lockedBy !== anonId) {
       return res.status(403).json({ error: "אין לך הרשאה לסמן את הפרק הזה" });
     }
 
-    const updated = await prisma.chapter.update({
+    // ✅ First mark the chapter as read
+    await prisma.chapter.update({
       where: { id: chapterId },
       data: {
         status: "read",
@@ -211,6 +236,7 @@ router.post("/chapter/:id/complete", async function (req, res) {
       },
     });
 
+    // ✅ Now count how many chapters are still unread
     const unreadCount = await prisma.chapter.count({
       where: {
         requestId: chapter.requestId,
@@ -219,32 +245,37 @@ router.post("/chapter/:id/complete", async function (req, res) {
     });
 
     if (unreadCount === 0) {
-      const originalChapters = await prisma.chapter.findMany({
-        where: { requestId: chapter.requestId },
-        orderBy: { number: "asc" },
+      // ✅ Full cycle is complete!
+
+      const request = await prisma.request.findUnique({
+        where: { id: chapter.requestId },
       });
 
-      for (const c of originalChapters) {
+      const indices = JSON.parse(request.chapterIndices);
+
+      // ✅ First increment the cycle counter
+      await prisma.request.update({
+        where: { id: request.id },
+        data: {
+          cycleCount: { increment: 1 },
+        },
+      });
+
+      // ✅ Then insert new chapters
+      for (const index of indices) {
         await prisma.chapter.create({
           data: {
-            requestId: c.requestId,
-            number: c.number,
+            requestId: request.id,
+            number: index,
             status: "unread",
             lockedBy: null,
             lockedAt: null,
           },
         });
       }
-
-      await prisma.request.update({
-        where: { id: chapter.requestId },
-        data: {
-          cyclesCompleted: { increment: 1 },
-        },
-      });
     }
 
-    res.json(updated);
+    res.json({ success: true });
   } catch (err) {
     console.error("Failed to complete chapter:", err);
     res.status(500).json({ error: "שגיאת שרת" });
@@ -255,30 +286,59 @@ router.post("/chapter/:id/complete", async function (req, res) {
 router.get("/request/:id/next-chapter", async (req, res) => {
   const anonId = req.anonId;
   const requestId = parseInt(req.params.id);
+  const error = validateInt(requestId, "ID בקשה");
+  if (error) return res.status(400).json({ error });
+
   const now = new Date();
   const twentyMinutesAgo = new Date(now.getTime() - 20 * 60 * 1000);
 
   try {
-    const possible = await prisma.chapter.findMany({
-      where: {
-        requestId,
-        status: { in: ["unread", "released"] },
-      },
+    const request = await prisma.request.findUnique({
+      where: { id: requestId },
     });
+    if (!request) return res.status(404).json({ error: "הבקשה לא נמצאה" });
 
-    console.log("Possible chapters:", possible);
+    const tryFindChapter = async () => {
+      return await prisma.chapter.findFirst({
+        where: {
+          requestId,
+          status: { in: ["unread", "released"] },
+          OR: [{ lockedAt: null }, { lockedAt: { lt: twentyMinutesAgo } }],
+        },
+        orderBy: { number: "asc" },
+      });
+    };
 
-    const chapter = await prisma.chapter.findFirst({
-      where: {
-        requestId,
-        status: { in: ["unread", "released"] },
-        OR: [{ lockedAt: null }, { lockedAt: { lt: twentyMinutesAgo } }],
-      },
-      orderBy: { number: "asc" },
-    });
+    let chapter = await tryFindChapter();
 
     if (!chapter) {
-      console.log("No available chapters for request", requestId);
+      // All chapters locked or read — open new book
+      const indices = JSON.parse(request.chapterIndices);
+
+      for (const index of indices) {
+        await prisma.chapter.create({
+          data: {
+            requestId,
+            number: index,
+            status: "unread",
+            lockedBy: null,
+            lockedAt: null,
+          },
+        });
+      }
+
+      await prisma.request.update({
+        where: { id: requestId },
+        data: {
+          cycleCount: { increment: 1 },
+        },
+      });
+
+      // Try again after creating new book
+      chapter = await tryFindChapter();
+    }
+
+    if (!chapter) {
       return res.status(404).json({ error: "אין כרגע פרקים זמינים" });
     }
 
