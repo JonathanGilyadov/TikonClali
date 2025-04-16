@@ -1,5 +1,13 @@
+// src/pages/HomePage.js
 import React, { useEffect, useState } from "react";
-import { Container, Typography, Box, Button, TextField } from "@mui/material";
+import {
+  Container,
+  Typography,
+  Box,
+  Button,
+  TextField,
+  Alert,
+} from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { fetchRequests, fetchChapters } from "../api/api";
 import RequestTable from "../components/RequestTable";
@@ -10,15 +18,17 @@ const HomePage = () => {
   const [requests, setRequests] = useState([]);
   const [chapters, setChapters] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
-  // Load chapters once on mount
   useEffect(() => {
     fetchChapters()
-      .then(setChapters)
-      .catch((err) => console.error("Failed to load chapters:", err));
+      .then((res) => {
+        setChapters(res);
+        setErrorMessage("");
+      })
+      .catch((err) => setErrorMessage(err.message));
   }, []);
 
-  // Load requests on mount and whenever searchQuery changes
   useEffect(() => {
     loadRequests(searchQuery);
   }, [searchQuery]);
@@ -27,8 +37,9 @@ const HomePage = () => {
     try {
       const reqs = await fetchRequests(query);
       setRequests(reqs);
+      setErrorMessage("");
     } catch (err) {
-      console.error("Failed to load requests:", err);
+      setErrorMessage(err.message);
     }
   };
 
@@ -41,6 +52,12 @@ const HomePage = () => {
       <Typography variant="h4" align="center" gutterBottom>
         תיקון כללי - קריאת פרקים למען אחרים
       </Typography>
+
+      {errorMessage && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {errorMessage}
+        </Alert>
+      )}
 
       <Typography
         variant="subtitle1"

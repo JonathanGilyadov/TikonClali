@@ -1,3 +1,4 @@
+// src/pages/CreateRequestPage.js
 import React, { useState } from "react";
 import {
   Container,
@@ -7,9 +8,10 @@ import {
   MenuItem,
   Box,
   Paper,
+  Snackbar,
+  Alert,
 } from "@mui/material";
 import { createRequest } from "../api/api";
-import { Snackbar, Alert } from "@mui/material";
 
 const CreateRequestPage = () => {
   const [form, setForm] = useState({
@@ -19,6 +21,7 @@ const CreateRequestPage = () => {
     notes: "",
   });
   const [showSuccess, setShowSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const handleChange = (e) => {
     setForm((prev) => ({
@@ -30,28 +33,31 @@ const CreateRequestPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const chapterCount = parseInt(form.chapterCount, 10);
-    const totalAvailable = 10; // or fetch from API in a useEffect
+    try {
+      const chapterCount = parseInt(form.chapterCount, 10);
+      const indices = Array.from({ length: 10 }, (_, i) => i);
+      const shuffled = indices.sort(() => 0.5 - Math.random());
+      const chapterIndices = shuffled.slice(0, chapterCount);
 
-    const indices = Array.from({ length: totalAvailable }, (_, i) => i);
-    const shuffled = indices.sort(() => 0.5 - Math.random());
-    const chapterIndices = shuffled.slice(0, chapterCount);
+      const newRequest = {
+        name: form.name,
+        purpose: form.purpose,
+        notes: form.notes,
+        chapterIndices,
+      };
 
-    const newRequest = {
-      name: form.name,
-      purpose: form.purpose,
-      notes: form.notes,
-      chapterIndices,
-    };
-
-    await createRequest(newRequest);
-    setShowSuccess(true);
-    setForm({
-      name: "",
-      purpose: "",
-      chapterCount: "",
-      notes: "",
-    });
+      await createRequest(newRequest);
+      setShowSuccess(true);
+      setForm({
+        name: "",
+        purpose: "",
+        chapterCount: "10",
+        notes: "",
+      });
+      setErrorMessage("");
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
   };
 
   return (
@@ -60,6 +66,12 @@ const CreateRequestPage = () => {
         <Typography variant="h5" gutterBottom>
           יצירת בקשת קריאה
         </Typography>
+
+        {errorMessage && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {errorMessage}
+          </Alert>
+        )}
 
         <Box component="form" onSubmit={handleSubmit} noValidate>
           <TextField
@@ -123,6 +135,7 @@ const CreateRequestPage = () => {
           </Button>
         </Box>
       </Paper>
+
       <Snackbar
         open={showSuccess}
         autoHideDuration={4000}

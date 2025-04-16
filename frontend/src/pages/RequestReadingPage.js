@@ -1,3 +1,4 @@
+// src/pages/RequestReadingPage.js
 import React, { useEffect, useState } from "react";
 import {
   Container,
@@ -21,6 +22,7 @@ const RequestReadingPage = () => {
   const [showSnackbar, setShowSnackbar] = useState(false);
   const [timeLeft, setTimeLeft] = useState(null);
   const [lockExpired, setLockExpired] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const loadChapter = async () => {
     setLoading(true);
@@ -28,6 +30,7 @@ const RequestReadingPage = () => {
       const data = await fetchNextChapter(id);
       setChapter(data);
       setLockExpired(false);
+      setErrorMessage("");
 
       const lockedUntil = new Date(
         new Date(data.lockedAt).getTime() + 20 * 60000,
@@ -47,8 +50,9 @@ const RequestReadingPage = () => {
       updateTime();
       const timerId = setInterval(updateTime, 1000);
       return () => clearInterval(timerId);
-    } catch {
+    } catch (err) {
       setChapter(null);
+      setErrorMessage(err.message);
     } finally {
       setLoading(false);
     }
@@ -59,14 +63,22 @@ const RequestReadingPage = () => {
   }, [id]);
 
   const handleComplete = async () => {
-    await completeChapter(chapter.id);
-    setShowSnackbar(true);
-    loadChapter();
+    try {
+      await completeChapter(chapter.id);
+      setShowSnackbar(true);
+      loadChapter();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
   };
 
   const handleRelease = async () => {
-    await releaseChapter(chapter.id);
-    loadChapter();
+    try {
+      await releaseChapter(chapter.id);
+      loadChapter();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
   };
 
   return (
@@ -75,6 +87,12 @@ const RequestReadingPage = () => {
         <Typography variant="h5" gutterBottom>
           קריאת פרק עבור בקשה #{id}
         </Typography>
+
+        {errorMessage && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {errorMessage}
+          </Alert>
+        )}
 
         {loading ? (
           <Box textAlign="center" sx={{ mt: 4 }}>

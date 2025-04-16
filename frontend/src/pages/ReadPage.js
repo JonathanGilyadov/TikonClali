@@ -14,6 +14,7 @@ import {
   LinearProgress,
   Box,
   Chip,
+  Alert,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { fetchRequests, fetchChapters } from "../api/api";
@@ -22,17 +23,22 @@ const ReadPage = () => {
   const navigate = useNavigate();
   const [requests, setRequests] = useState([]);
   const [chapters, setChapters] = useState([]);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     const load = async () => {
-      const [reqs, chaps] = await Promise.all([
-        fetchRequests(),
-        fetchChapters(),
-      ]);
-      setRequests(reqs);
-      setChapters(chaps);
+      try {
+        const [reqs, chaps] = await Promise.all([
+          fetchRequests(),
+          fetchChapters(),
+        ]);
+        setRequests(reqs);
+        setChapters(chaps);
+        setErrorMessage("");
+      } catch (err) {
+        setErrorMessage(err.message);
+      }
     };
-
     load();
   }, []);
 
@@ -54,6 +60,12 @@ const ReadPage = () => {
       <Typography variant="h5" gutterBottom>
         בקשות קריאה פעילות
       </Typography>
+
+      {errorMessage && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {errorMessage}
+        </Alert>
+      )}
 
       <TableContainer component={Paper} sx={{ mt: 2 }}>
         <Table>
