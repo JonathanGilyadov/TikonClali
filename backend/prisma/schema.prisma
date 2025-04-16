@@ -12,8 +12,20 @@ model Request {
   name           String
   purpose        String
   notes          String?
-  chapterIndices String   // JSON string
+  chapterIndices String // Stored as JSON string
+  progress       String // Stored as JSON string
   cycleCount     Int      @default(0)
-  progress       String   @default("[]") // JSON string
   createdAt      DateTime @default(now())
+
+  chapters Chapter[] @relation("RequestChapters") // 👈 reverse relation
+}
+
+model Chapter {
+  id        Int       @id @default(autoincrement())
+  number    Int
+  status    String
+  lockedBy  String?
+  lockedAt  DateTime?
+  requestId Int
+  request   Request   @relation("RequestChapters", fields: [requestId], references: [id])
 }

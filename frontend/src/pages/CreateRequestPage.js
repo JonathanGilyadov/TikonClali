@@ -12,6 +12,7 @@ import {
   Alert,
 } from "@mui/material";
 import { createRequest } from "../api/api";
+import { useNavigate } from "react-router-dom";
 
 const CreateRequestPage = () => {
   const [form, setForm] = useState({
@@ -22,6 +23,7 @@ const CreateRequestPage = () => {
   });
   const [showSuccess, setShowSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const navigate = useNavigate();
 
   const handleChange = (e) => {
     setForm((prev) => ({
@@ -46,8 +48,8 @@ const CreateRequestPage = () => {
         chapterIndices,
       };
 
-      await createRequest(newRequest);
-      setShowSuccess(true);
+      const res = await createRequest(newRequest);
+      navigate(`/read/${res.id}`);
       setForm({
         name: "",
         purpose: "",

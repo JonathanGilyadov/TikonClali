@@ -11,18 +11,42 @@ import {
   Alert,
 } from "@mui/material";
 import { useParams, useNavigate } from "react-router-dom";
-import { fetchNextChapter, completeChapter, releaseChapter } from "../api/api";
+import {
+  fetchNextChapter,
+  completeChapter,
+  releaseChapter,
+  fetchChapters,
+} from "../api/api";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 
 const RequestReadingPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
   const [chapter, setChapter] = useState(null);
+  const [chaptersData, setChaptersData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showSnackbar, setShowSnackbar] = useState(false);
+  const [showCopied, setShowCopied] = useState(false);
   const [timeLeft, setTimeLeft] = useState(null);
   const [lockExpired, setLockExpired] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    const loadAll = async () => {
+      try {
+        const [chapterData] = await Promise.all([
+          fetchChapters(),
+          loadChapter(),
+        ]);
+        setChaptersData(chapterData);
+      } catch (err) {
+        setErrorMessage(err.message);
+      }
+    };
+    loadAll();
+  }, [id]);
 
   const loadChapter = async () => {
     setLoading(true);
@@ -58,10 +82,6 @@ const RequestReadingPage = () => {
     }
   };
 
-  useEffect(() => {
-    loadChapter();
-  }, [id]);
-
   const handleComplete = async () => {
     try {
       await completeChapter(chapter.id);
@@ -81,6 +101,23 @@ const RequestReadingPage = () => {
     }
   };
 
+  const handleShare = () => {
+    const url = `${window.location.origin}/read/${id}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setShowCopied(true);
+    });
+  };
+
+  const handleWhatsAppShare = () => {
+    const url = `${window.location.origin}/read/${id}`;
+    const text = `תיקון כללי - לחצו לקריאה: ${url}`;
+    const shareUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(shareUrl, "_blank");
+  };
+
+  const chapterContent =
+    chapter && chaptersData.length > 0 ? chaptersData[chapter.number] : null;
+
   return (
     <Container maxWidth="sm" sx={{ mt: 4 }}>
       <Paper sx={{ p: 4 }}>
@@ -99,7 +136,7 @@ const RequestReadingPage = () => {
             <CircularProgress />
             <Typography sx={{ mt: 2 }}>טוען פרק לקריאה...</Typography>
           </Box>
-        ) : chapter ? (
+        ) : chapter && chapterContent ? (
           lockExpired ? (
             <Box textAlign="center">
               <Typography variant="h6" sx={{ mb: 2 }}>
@@ -134,15 +171,23 @@ const RequestReadingPage = () => {
                 </Typography>
               )}
 
-              <Typography variant="h6" align="center" sx={{ mb: 2 }}>
-                {chapter.title || `פרק ${chapter.number}`}
+              <Typography variant="h6" align="center" sx={{ mb: 1 }}>
+                {chapterContent.title || `פרק ${chapterContent.number}`}
+              </Typography>
+              <Typography
+                variant="subtitle1"
+                color="text.secondary"
+                align="center"
+                gutterBottom
+              >
+                {chapterContent.mizmor}
               </Typography>
               <Typography
                 variant="body1"
                 align="center"
                 sx={{ whiteSpace: "pre-line", mb: 3 }}
               >
-                {chapter.content}
+                {chapterContent.content}
               </Typography>
 
               <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -166,6 +211,31 @@ const RequestReadingPage = () => {
                   onClick={handleRelease}
                 >
                   🔴 שחרר - טקסט לא ברור
+                </Button>
+              </Box>
+
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "center",
+                  gap: 2,
+                  mt: 3,
+                }}
+              >
+                <Button
+                  variant="outlined"
+                  startIcon={<ContentCopyIcon />}
+                  onClick={handleShare}
+                >
+                  העתק קישור
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<WhatsAppIcon />}
+                  onClick={handleWhatsAppShare}
+                  color="success"
+                >
+                  שתף בוואטסאפ
                 </Button>
               </Box>
             </>
@@ -194,6 +264,21 @@ const RequestReadingPage = () => {
           sx={{ width: "100%" }}
         >
           🎉 הפרק סומן כנקרא!
+        </Alert>
+      </Snackbar>
+
+      <Snackbar
+        open={showCopied}
+        autoHideDuration={3000}
+        onClose={() => setShowCopied(false)}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setShowCopied(false)}
+          severity="info"
+          sx={{ width: "100%" }}
+        >
+          ✔ הקישור הועתק!
         </Alert>
       </Snackbar>
     </Container>

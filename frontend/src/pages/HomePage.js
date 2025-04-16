@@ -1,4 +1,3 @@
-// src/pages/HomePage.js
 import React, { useEffect, useState } from "react";
 import {
   Container,
@@ -6,10 +5,11 @@ import {
   Box,
   Button,
   TextField,
+  Paper,
   Alert,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
-import { fetchRequests, fetchChapters } from "../api/api";
+import { fetchRequests, fetchChapters, fetchStats } from "../api/api";
 import RequestTable from "../components/RequestTable";
 
 const HomePage = () => {
@@ -19,7 +19,19 @@ const HomePage = () => {
   const [chapters, setChapters] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [stats, setStats] = useState({
+    totalRequests: 0,
+    totalChaptersRead: 0,
+  });
 
+  // Stats only need to be fetched once
+  useEffect(() => {
+    fetchStats()
+      .then(setStats)
+      .catch((err) => setErrorMessage(err.message));
+  }, []);
+
+  // Chapters for request preview table
   useEffect(() => {
     fetchChapters()
       .then((res) => {
@@ -29,6 +41,7 @@ const HomePage = () => {
       .catch((err) => setErrorMessage(err.message));
   }, []);
 
+  // Limited preview requests for display
   useEffect(() => {
     loadRequests(searchQuery);
   }, [searchQuery]);
@@ -36,7 +49,7 @@ const HomePage = () => {
   const loadRequests = async (query = "") => {
     try {
       const reqs = await fetchRequests(query);
-      setRequests(reqs);
+      setRequests(reqs.slice(0, 10));
       setErrorMessage("");
     } catch (err) {
       setErrorMessage(err.message);
@@ -74,6 +87,23 @@ const HomePage = () => {
         </Button>
       </Box>
 
+      <Box elevation={2} sx={{ p: 2, mb: 4, textAlign: "center" }}>
+        <Box sx={{ display: "flex", justifyContent: "center", gap: 6 }}>
+          <Box>
+            <Typography variant="h6" color="primary">
+              בקשות פעילות
+            </Typography>
+            <Typography variant="h4">{stats.totalRequests}</Typography>
+          </Box>
+          <Box>
+            <Typography variant="h6" color="primary">
+              פרקים שנקראו
+            </Typography>
+            <Typography variant="h4">{stats.totalChaptersRead}</Typography>
+          </Box>
+        </Box>
+      </Box>
+
       <TextField
         label="חיפוש לפי שם"
         variant="outlined"
@@ -85,7 +115,7 @@ const HomePage = () => {
       />
 
       <Typography variant="h6" gutterBottom>
-        בקשות פעילות
+        בקשות פעילות (עד 10)
       </Typography>
 
       <RequestTable requests={requests} chapters={chapters} />

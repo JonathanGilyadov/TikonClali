@@ -87,3 +87,9 @@ export async function releaseChapter(chapterId) {
   });
   return handle(res);
 }
+
+export const fetchStats = async () => {
+  const res = await fetch(`${API_BASE}/stats`, { headers: headers() });
+  if (!res.ok) throw new Error("שגיאה בטעינת סטטיסטיקה");
+  return res.json();
+};
