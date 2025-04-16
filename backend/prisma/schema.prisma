@@ -1,0 +1,19 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./tikon.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Request {
+  id             Int      @id @default(autoincrement())
+  name           String
+  purpose        String
+  notes          String?
+  chapterIndices String   // JSON string
+  cycleCount     Int      @default(0)
+  progress       String   @default("[]") // JSON string
+  createdAt      DateTime @default(now())
+}
