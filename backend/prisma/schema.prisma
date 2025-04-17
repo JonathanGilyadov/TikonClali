@@ -27,6 +27,9 @@ model Chapter {
   lockedBy  String?
   lockedAt  DateTime?
   requestId Int
+  readBy    String?      // 👈 who completed it
+  readAt    DateTime?    // 👈 when it was completed
+
   request   Request   @relation("RequestChapters", fields: [requestId], references: [id])
 }
 

@@ -5,8 +5,6 @@ const fs = require("fs");
 const path = require("path");
 const { validateNewRequest, validateInt } = require("../utils/validate");
 
-// GET /requests
-// GET /requests
 router.get("/requests", async (req, res) => {
   try {
     const { search } = req.query;
@@ -26,19 +24,19 @@ router.get("/requests", async (req, res) => {
     const enriched = await Promise.all(
       requests.map(async (r) => {
         const chapterIndices = JSON.parse(r.chapterIndices || "[]");
-        const progress = JSON.parse(r.progress || "[]");
 
-        const read = await prisma.chapter.count({
-          where: {
-            requestId: r.id,
-            status: "read",
-          },
+        const recentChapters = await prisma.chapter.findMany({
+          where: { requestId: r.id },
+          orderBy: { id: "asc" }, // ✅ Important: use oldest N chapters = current cycle
+          take: chapterIndices.length,
         });
+
+        const read = recentChapters.filter((ch) => ch.status === "read").length;
 
         return {
           ...r,
           chapterIndices,
-          progress,
+          progress: [], // progress field is deprecated
           totalChapters: chapterIndices.length,
           readChapters: read,
         };
@@ -236,7 +234,15 @@ router.post("/chapter/:id/complete", async function (req, res) {
         status: "read",
         lockedBy: null,
         lockedAt: null,
+        readBy: anonId,
+        readAt: new Date(),
       },
+    });
+
+    await prisma.readCounter.upsert({
+      where: { id: 1 },
+      update: { count: { increment: 1 } },
+      create: { id: 1, count: 1 },
     });
 
     // ✅ Now count how many chapters are still unread
@@ -350,39 +356,50 @@ router.get("/request/:id/next-chapter", async (req, res) => {
 // GET /stats
 router.get("/stats", async (req, res) => {
   try {
-    console.log("asdsadsa");
-    const [totalRequests, totalChaptersRead, activeRequests, lockedChapters] =
-      await Promise.all([
-        prisma.request.count(), // ✅ usually safe
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Midnight today
 
-        prisma.chapter.count({ where: { status: "read" } }), // ✅ usually safe
+    const [
+      totalRequests,
+      totalCycles,
+      readRow,
+      chaptersReadToday,
+      uniqueReaders,
+    ] = await Promise.all([
+      prisma.request.count(),
 
-        prisma.request.count({
-          // ⚠️ This could throw if `chapters` relation not correctly named
-          where: {
-            chapters: {
-              // 👈 Make sure this matches your relation name in Prisma schema
-              some: { status: { not: "read" } },
-            },
-          },
-        }),
+      prisma.request.aggregate({
+        _sum: { cycleCount: true },
+      }),
 
-        prisma.chapter.count({ where: { status: "in-progress" } }),
-      ]);
+      prisma.readCounter.findUnique({ where: { id: 1 } }),
 
-    const totalCycles = await prisma.request.aggregate({
-      _sum: { cycleCount: true },
-    });
+      prisma.chapter.count({
+        where: {
+          status: "read",
+          readAt: { gte: today },
+        },
+      }),
+
+      prisma.chapter.findMany({
+        where: {
+          status: "read",
+          readBy: { not: null },
+        },
+        select: { readBy: true },
+        distinct: ["readBy"],
+      }),
+    ]);
 
     res.json({
       totalRequests,
-      totalChaptersRead,
-      activeRequests,
-      lockedChapters,
+      totalChaptersRead: readRow?.count || 0,
       totalCyclesCompleted: totalCycles._sum.cycleCount || 0,
+      totalParticipants: uniqueReaders.length,
+      chaptersReadToday,
     });
   } catch (err) {
-    console.error("Failed to load stats:", err); // 👈 Check here
+    console.error("Failed to load stats:", err);
     res.status(500).json({ error: "Failed to load stats" });
   }
 });

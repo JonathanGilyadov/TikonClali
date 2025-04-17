@@ -109,11 +109,11 @@ const HomePage = () => {
               flexWrap: "wrap",
             }}
           >
-            <Stat label="בקשות פעילות" value={stats.activeRequests} />
             <Stat label="סך כל הבקשות" value={stats.totalRequests} />
             <Stat label="פרקים שנקראו עד כה" value={stats.totalChaptersRead} />
             <Stat label="סבבים שהושלמו" value={stats.totalCyclesCompleted} />
-            <Stat label="פרקים נעולים כעת" value={stats.lockedChapters} />
+            <Stat label="מספר משתתפים" value={stats.totalParticipants} />
+            <Stat label="פרקים שנקראו היום" value={stats.chaptersReadToday} />
           </Box>
         </Box>
       )}
