@@ -205,6 +205,7 @@ router.post("/chapter/:id/release", async function (req, res) {
 });
 
 // POST /chapter/:id/complete
+// POST /chapter/:id/complete
 router.post("/chapter/:id/complete", async function (req, res) {
   const anonId = req.anonId;
   const chapterId = parseInt(req.params.id);
@@ -228,55 +229,61 @@ router.post("/chapter/:id/complete", async function (req, res) {
       return res.status(403).json({ error: "אין לך הרשאה לסמן את הפרק הזה" });
     }
 
-    // ✅ First mark the chapter as read
+    // ✅ Mark the chapter as read
     await prisma.chapter.update({
       where: { id: chapterId },
       data: {
         status: "read",
         lockedBy: null,
         lockedAt: null,
-        readBy: anonId,
         readAt: new Date(),
+        readBy: anonId,
       },
     });
 
+    // ✅ Update read counter
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const current = await prisma.readCounter.findUnique({ where: { id: 1 } });
+    const readersSet = new Set(JSON.parse(current?.readers || "[]"));
+    readersSet.add(anonId);
 
     if (
       !current ||
       !current.todayDate ||
       new Date(current.todayDate).getTime() !== today.getTime()
     ) {
-      // New day → reset todayCount
+      // It's a new day → reset todayCount
       await prisma.readCounter.upsert({
         where: { id: 1 },
         update: {
           count: { increment: 1 },
           todayCount: 1,
           todayDate: today,
+          readers: JSON.stringify(Array.from(readersSet)),
         },
         create: {
           id: 1,
           count: 1,
           todayCount: 1,
           todayDate: today,
+          readers: JSON.stringify(Array.from(readersSet)),
         },
       });
     } else {
-      // Same day → increment
+      // Same day → increment todayCount
       await prisma.readCounter.update({
         where: { id: 1 },
         data: {
           count: { increment: 1 },
           todayCount: { increment: 1 },
+          readers: JSON.stringify(Array.from(readersSet)),
         },
       });
     }
 
-    // ✅ Now count how many chapters are still unread
+    // ✅ Check if all chapters are read — reset cycle if needed
     const unreadCount = await prisma.chapter.count({
       where: {
         requestId: chapter.requestId,
@@ -385,47 +392,38 @@ router.get("/request/:id/next-chapter", async (req, res) => {
 });
 
 // GET /stats
+// GET /stats
 router.get("/stats", async (req, res) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Midnight today
 
-    const [totalRequests, totalCycles, readRow, uniqueReaders] =
-      await Promise.all([
-        prisma.request.count(),
+    const [totalRequests, totalCycles, readRow] = await Promise.all([
+      prisma.request.count(),
+      prisma.request.aggregate({ _sum: { cycleCount: true } }),
+      prisma.readCounter.findUnique({ where: { id: 1 } }),
+    ]);
 
-        prisma.request.aggregate({
-          _sum: { cycleCount: true },
-        }),
-
-        prisma.readCounter.findUnique({ where: { id: 1 } }),
-
-        prisma.chapter.findMany({
-          where: {
-            status: "read",
-            readBy: { not: null },
-          },
-          select: { readBy: true },
-          distinct: ["readBy"],
-        }),
-      ]);
-
-    // 🔍 Ensure todayCount is only shown if todayDate is today
+    // Calculate today's reads correctly
     let chaptersReadToday = 0;
     if (readRow?.todayDate) {
       const lastUpdated = new Date(readRow.todayDate);
       lastUpdated.setHours(0, 0, 0, 0);
-
       if (lastUpdated.getTime() === today.getTime()) {
         chaptersReadToday = readRow.todayCount;
       }
     }
 
+    // Total participants
+    const totalParticipants = readRow?.readers
+      ? JSON.parse(readRow.readers).length
+      : 0;
+
     res.json({
       totalRequests,
       totalChaptersRead: readRow?.count || 0,
       totalCyclesCompleted: totalCycles._sum.cycleCount || 0,
-      totalParticipants: uniqueReaders.length,
+      totalParticipants,
       chaptersReadToday,
     });
   } catch (err) {
