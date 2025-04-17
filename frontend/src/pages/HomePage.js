@@ -12,6 +12,15 @@ import { useNavigate } from "react-router-dom";
 import { fetchRequests, fetchChapters, fetchStats } from "../api/api";
 import RequestTable from "../components/RequestTable";
 
+const Stat = ({ label, value }) => (
+  <Box sx={{ minWidth: 120 }}>
+    <Typography variant="subtitle2" color="text.secondary">
+      {label}
+    </Typography>
+    <Typography variant="h5">{value ?? 0}</Typography>
+  </Box>
+);
+
 const HomePage = () => {
   const navigate = useNavigate();
 
@@ -87,22 +96,27 @@ const HomePage = () => {
         </Button>
       </Box>
 
-      <Box elevation={2} sx={{ p: 2, mb: 4, textAlign: "center" }}>
-        <Box sx={{ display: "flex", justifyContent: "center", gap: 6 }}>
-          <Box>
-            <Typography variant="h6" color="primary">
-              בקשות פעילות
-            </Typography>
-            <Typography variant="h4">{stats.totalRequests}</Typography>
-          </Box>
-          <Box>
-            <Typography variant="h6" color="primary">
-              פרקים שנקראו
-            </Typography>
-            <Typography variant="h4">{stats.totalChaptersRead}</Typography>
+      {stats && (
+        <Box elevation={2} sx={{ p: 2, mb: 4, textAlign: "center" }}>
+          <Typography variant="h6" gutterBottom color="primary">
+            ✨ סטטיסטיקות המיזם
+          </Typography>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "center",
+              gap: 4,
+              flexWrap: "wrap",
+            }}
+          >
+            <Stat label="בקשות פעילות" value={stats.activeRequests} />
+            <Stat label="סך כל הבקשות" value={stats.totalRequests} />
+            <Stat label="פרקים שנקראו עד כה" value={stats.totalChaptersRead} />
+            <Stat label="סבבים שהושלמו" value={stats.totalCyclesCompleted} />
+            <Stat label="פרקים נעולים כעת" value={stats.lockedChapters} />
           </Box>
         </Box>
-      </Box>
+      )}
 
       <TextField
         label="חיפוש לפי שם"

@@ -29,3 +29,8 @@ model Chapter {
   requestId Int
   request   Request   @relation("RequestChapters", fields: [requestId], references: [id])
 }
+
+model ReadCounter {
+  id     Int    @id @default(1)
+  count  Int    @default(0)
+}

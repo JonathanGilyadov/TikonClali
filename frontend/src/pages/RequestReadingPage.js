@@ -28,6 +28,7 @@ const RequestReadingPage = () => {
   const [chaptersData, setChaptersData] = useState([]);
   const [requestInfo, setRequestInfo] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [transitioning, setTransitioning] = useState(false);
   const [showSnackbar, setShowSnackbar] = useState(false);
   const [showCopied, setShowCopied] = useState(false);
   const [timeLeft, setTimeLeft] = useState(null);
@@ -78,22 +79,68 @@ const RequestReadingPage = () => {
     return () => clearInterval(interval);
   }, [chapter?.lockedAt]);
 
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
   const handleComplete = async () => {
     try {
+      setTransitioning(true);
+
       await completeChapter(chapter.id);
+      const [next, updatedRequest] = await Promise.all([
+        fetchNextChapter(id),
+        fetchRequestById(id), // 👈 fetch updated progress and cycle count
+      ]);
+
+      setRequestInfo(updatedRequest);
+
+      if (next) {
+        setChapter(next);
+        setLockExpired(false);
+      } else {
+        setChapter(null);
+        setErrorMessage("🎉 כל הפרקים הושלמו בסבב זה!");
+      }
+
       setShowSnackbar(true);
-      window.location.reload(); // or re-fetch all data
     } catch (err) {
       setErrorMessage(err.message);
+    } finally {
+      setTransitioning(false);
     }
   };
 
-  const handleRelease = async () => {
+  const handleReleaseOnly = async () => {
     try {
+      setTransitioning(true);
       await releaseChapter(chapter.id);
-      window.location.reload(); // or re-fetch all data
+      setChapter(null);
+      setShowSnackbar(true);
     } catch (err) {
       setErrorMessage(err.message);
+    } finally {
+      setTransitioning(false);
+    }
+  };
+
+  const handleReleaseAndNext = async () => {
+    try {
+      setTransitioning(true);
+
+      const next = await fetchNextChapter(id); // 👈 fetch first
+      await releaseChapter(chapter.id); // 👈 then release this one
+
+      if (next) {
+        setChapter(next);
+        setLockExpired(false);
+      } else {
+        setChapter(null);
+        setErrorMessage("אין כרגע פרקים זמינים נוספים");
+      }
+    } catch (err) {
+      setChapter(null);
+      setErrorMessage("לא ניתן להשיג פרק חדש");
+    } finally {
+      setTransitioning(false);
     }
   };
 
@@ -117,14 +164,36 @@ const RequestReadingPage = () => {
   return (
     <Container maxWidth="sm" sx={{ mt: 4 }}>
       <Paper sx={{ p: 4 }}>
-        <Typography variant="h5" gutterBottom>
-          קריאת פרק עבור בקשה #{id}
-        </Typography>
-
         {requestInfo && (
-          <Typography align="center" color="text.secondary" sx={{ mt: 2 }}>
-            📚 מספר סבבי קריאה שהושלמו: {requestInfo.cycleCount}
-          </Typography>
+          <>
+            <Typography variant="h5" gutterBottom align="center">
+              קריאת פרק עבור {requestInfo.name}
+            </Typography>
+
+            <Typography
+              variant="subtitle1"
+              align="center"
+              color="text.secondary"
+              gutterBottom
+            >
+              🎯 מטרה: {requestInfo.purpose}
+            </Typography>
+
+            {requestInfo.notes && (
+              <Typography
+                variant="body1"
+                align="center"
+                sx={{ mb: 2, whiteSpace: "pre-line" }}
+                color="text.secondary"
+              >
+                📝 {requestInfo.notes}
+              </Typography>
+            )}
+
+            <Typography align="center" color="text.secondary" sx={{ mb: 2 }}>
+              📚 מספר סבבי קריאה שהושלמו: {requestInfo.cycleCount}
+            </Typography>
+          </>
         )}
 
         {errorMessage && (
@@ -133,10 +202,12 @@ const RequestReadingPage = () => {
           </Alert>
         )}
 
-        {loading ? (
+        {loading || transitioning ? (
           <Box textAlign="center" sx={{ mt: 4 }}>
             <CircularProgress />
-            <Typography sx={{ mt: 2 }}>טוען פרק לקריאה...</Typography>
+            <Typography sx={{ mt: 2, mb: 2 }}>
+              {loading ? "טוען פרק לקריאה..." : "טוען פרק חדש..."}
+            </Typography>
           </Box>
         ) : chapter && chapterContent ? (
           lockExpired ? (
@@ -144,14 +215,14 @@ const RequestReadingPage = () => {
               <Typography variant="h6" sx={{ mb: 2 }}>
                 ⏰ זמן הקריאה של הפרק נגמר.
               </Typography>
-              <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+              <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
                 יתכן שמישהו אחר נעל את הפרק. תוכל לנסות לנעול אותו מחדש.
               </Typography>
               <Button
                 variant="contained"
-                onClick={() => window.location.reload()}
+                onClick={() => handleReleaseAndNext()}
               >
-                🔁 נסה לנעול שוב
+                🔁 נסה לנעול פרק חדש
               </Button>
             </Box>
           ) : (
@@ -195,21 +266,21 @@ const RequestReadingPage = () => {
                   color="success"
                   onClick={handleComplete}
                 >
-                  ✅ סיימתי לקרוא
+                  סיימתי לקרוא ✅
                 </Button>
                 <Button
                   variant="outlined"
                   color="warning"
-                  onClick={handleRelease}
+                  onClick={handleReleaseAndNext}
                 >
-                  🟡 שחרר - לא הצלחתי לקרוא
+                  חפש לי פרק אחר 🔄
                 </Button>
                 <Button
                   variant="outlined"
                   color="error"
-                  onClick={handleRelease}
+                  onClick={handleReleaseOnly}
                 >
-                  🔴 שחרר - טקסט לא ברור
+                  אין לי זמן עכשיו, שחרר פרק זה ❌
                 </Button>
               </Box>
 
@@ -258,11 +329,10 @@ const RequestReadingPage = () => {
       >
         <Alert
           onClose={() => setShowSnackbar(false)}
-          severity="success"
-          variant="filled"
+          severity="info"
           sx={{ width: "100%" }}
         >
-          🎉 הפרק סומן כנקרא!
+          ✔ הפרק שוחרר בהצלחה!
         </Alert>
       </Snackbar>
 

@@ -6,6 +6,7 @@ const path = require("path");
 const { validateNewRequest, validateInt } = require("../utils/validate");
 
 // GET /requests
+// GET /requests
 router.get("/requests", async (req, res) => {
   try {
     const { search } = req.query;
@@ -15,7 +16,6 @@ router.get("/requests", async (req, res) => {
         ? {
             name: {
               contains: search,
-              mode: "insensitive",
             },
           }
         : {},
@@ -25,18 +25,21 @@ router.get("/requests", async (req, res) => {
 
     const enriched = await Promise.all(
       requests.map(async (r) => {
-        const recentChapters = await prisma.chapter.findMany({
-          where: { requestId: r.id },
-          orderBy: { id: "desc" },
-        });
+        const chapterIndices = JSON.parse(r.chapterIndices || "[]");
+        const progress = JSON.parse(r.progress || "[]");
 
-        const read = recentChapters.filter((ch) => ch.status === "read").length;
+        const read = await prisma.chapter.count({
+          where: {
+            requestId: r.id,
+            status: "read",
+          },
+        });
 
         return {
           ...r,
-          chapterIndices: JSON.parse(r.chapterIndices),
-          progress: JSON.parse(r.progress),
-          totalChapters: recentChapters.length,
+          chapterIndices,
+          progress,
+          totalChapters: chapterIndices.length,
           readChapters: read,
         };
       }),
@@ -245,34 +248,21 @@ router.post("/chapter/:id/complete", async function (req, res) {
     });
 
     if (unreadCount === 0) {
-      // ✅ Full cycle is complete!
-
-      const request = await prisma.request.findUnique({
-        where: { id: chapter.requestId },
-      });
-
-      const indices = JSON.parse(request.chapterIndices);
-
-      // ✅ First increment the cycle counter
       await prisma.request.update({
-        where: { id: request.id },
+        where: { id: chapter.requestId },
         data: {
           cycleCount: { increment: 1 },
         },
       });
 
-      // ✅ Then insert new chapters
-      for (const index of indices) {
-        await prisma.chapter.create({
-          data: {
-            requestId: request.id,
-            number: index,
-            status: "unread",
-            lockedBy: null,
-            lockedAt: null,
-          },
-        });
-      }
+      await prisma.chapter.updateMany({
+        where: { requestId: chapter.requestId },
+        data: {
+          status: "unread",
+          lockedBy: null,
+          lockedAt: null,
+        },
+      });
     }
 
     res.json({ success: true });
@@ -303,7 +293,11 @@ router.get("/request/:id/next-chapter", async (req, res) => {
         where: {
           requestId,
           status: { in: ["unread", "released"] },
-          OR: [{ lockedAt: null }, { lockedAt: { lt: twentyMinutesAgo } }],
+          OR: [
+            { lockedAt: null },
+            { lockedAt: { lt: twentyMinutesAgo } },
+            { lockedBy: { not: anonId } }, // 👈 ignore ones locked by this user!
+          ],
         },
         orderBy: { number: "asc" },
       });
@@ -312,21 +306,7 @@ router.get("/request/:id/next-chapter", async (req, res) => {
     let chapter = await tryFindChapter();
 
     if (!chapter) {
-      // All chapters locked or read — open new book
-      const indices = JSON.parse(request.chapterIndices);
-
-      for (const index of indices) {
-        await prisma.chapter.create({
-          data: {
-            requestId,
-            number: index,
-            status: "unread",
-            lockedBy: null,
-            lockedAt: null,
-          },
-        });
-      }
-
+      // All chapters completed — restart cycle
       await prisma.request.update({
         where: { id: requestId },
         data: {
@@ -334,7 +314,16 @@ router.get("/request/:id/next-chapter", async (req, res) => {
         },
       });
 
-      // Try again after creating new book
+      await prisma.chapter.updateMany({
+        where: { requestId },
+        data: {
+          status: "unread",
+          lockedBy: null,
+          lockedAt: null,
+        },
+      });
+
+      // Try again after resetting
       chapter = await tryFindChapter();
     }
 
@@ -361,20 +350,39 @@ router.get("/request/:id/next-chapter", async (req, res) => {
 // GET /stats
 router.get("/stats", async (req, res) => {
   try {
-    const totalRequests = await prisma.request.count();
+    console.log("asdsadsa");
+    const [totalRequests, totalChaptersRead, activeRequests, lockedChapters] =
+      await Promise.all([
+        prisma.request.count(), // ✅ usually safe
 
-    const requests = await prisma.request.findMany({
-      select: { progress: true },
+        prisma.chapter.count({ where: { status: "read" } }), // ✅ usually safe
+
+        prisma.request.count({
+          // ⚠️ This could throw if `chapters` relation not correctly named
+          where: {
+            chapters: {
+              // 👈 Make sure this matches your relation name in Prisma schema
+              some: { status: { not: "read" } },
+            },
+          },
+        }),
+
+        prisma.chapter.count({ where: { status: "in-progress" } }),
+      ]);
+
+    const totalCycles = await prisma.request.aggregate({
+      _sum: { cycleCount: true },
     });
 
-    const totalChaptersRead = requests.reduce(
-      (sum, req) => sum + JSON.parse(req.progress || "[]").length,
-      0,
-    );
-
-    res.json({ totalRequests, totalChaptersRead });
+    res.json({
+      totalRequests,
+      totalChaptersRead,
+      activeRequests,
+      lockedChapters,
+      totalCyclesCompleted: totalCycles._sum.cycleCount || 0,
+    });
   } catch (err) {
-    console.error("Failed to load stats:", err);
+    console.error("Failed to load stats:", err); // 👈 Check here
     res.status(500).json({ error: "Failed to load stats" });
   }
 });
