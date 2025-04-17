@@ -12,6 +12,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 const Header = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const isAdmin = localStorage.getItem("adminToken") === "supersecret123";
 
   return (
     <AppBar
@@ -53,6 +54,16 @@ const Header = () => {
             >
               יצירת בקשה
             </Button>
+
+            {isAdmin && (
+              <Button
+                color="inherit"
+                onClick={() => navigate("/admin")}
+                disabled={location.pathname === "/admin"}
+              >
+                ניהול
+              </Button>
+            )}
           </Box>
         </Toolbar>
       </Container>

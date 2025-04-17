@@ -34,6 +34,9 @@ model Chapter {
 }
 
 model ReadCounter {
-  id     Int    @id @default(1)
-  count  Int    @default(0)
+  id           Int      @id @default(1)
+  count        Int      @default(0)
+  todayCount   Int      @default(0)
+  todayDate    DateTime?
+  readers      String    @default("[]") // stored as JSON string
 }

@@ -9,6 +9,9 @@ import CreateRequestPage from "./pages/CreateRequestPage";
 import Header from "./components/Header";
 import ReadPage from "./pages/ReadPage";
 import RequestReadingPage from "./pages/RequestReadingPage";
+import AdminLoginPage from "./pages/AdminLoginPage";
+import AdminDashboard from "./pages/AdminDashboard";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 const App = () => (
   <CacheProvider value={cacheRtl}>
@@ -21,6 +24,15 @@ const App = () => (
           <Route path="/create-request" element={<CreateRequestPage />} />
           <Route path="/read" element={<ReadPage />} />
           <Route path="/read/:id" element={<RequestReadingPage />} />
+          <Route path="/admin/login" element={<AdminLoginPage />} />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
         </Routes>
       </Box>
     </ThemeProvider>

@@ -4,6 +4,7 @@ const prisma = require("../prisma");
 const fs = require("fs");
 const path = require("path");
 const { validateNewRequest, validateInt } = require("../utils/validate");
+const adminAuth = require("../middleware/adminAuth");
 
 router.get("/requests", async (req, res) => {
   try {
@@ -239,11 +240,41 @@ router.post("/chapter/:id/complete", async function (req, res) {
       },
     });
 
-    await prisma.readCounter.upsert({
-      where: { id: 1 },
-      update: { count: { increment: 1 } },
-      create: { id: 1, count: 1 },
-    });
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const current = await prisma.readCounter.findUnique({ where: { id: 1 } });
+
+    if (
+      !current ||
+      !current.todayDate ||
+      new Date(current.todayDate).getTime() !== today.getTime()
+    ) {
+      // New day → reset todayCount
+      await prisma.readCounter.upsert({
+        where: { id: 1 },
+        update: {
+          count: { increment: 1 },
+          todayCount: 1,
+          todayDate: today,
+        },
+        create: {
+          id: 1,
+          count: 1,
+          todayCount: 1,
+          todayDate: today,
+        },
+      });
+    } else {
+      // Same day → increment
+      await prisma.readCounter.update({
+        where: { id: 1 },
+        data: {
+          count: { increment: 1 },
+          todayCount: { increment: 1 },
+        },
+      });
+    }
 
     // ✅ Now count how many chapters are still unread
     const unreadCount = await prisma.chapter.count({
@@ -359,37 +390,36 @@ router.get("/stats", async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Midnight today
 
-    const [
-      totalRequests,
-      totalCycles,
-      readRow,
-      chaptersReadToday,
-      uniqueReaders,
-    ] = await Promise.all([
-      prisma.request.count(),
+    const [totalRequests, totalCycles, readRow, uniqueReaders] =
+      await Promise.all([
+        prisma.request.count(),
 
-      prisma.request.aggregate({
-        _sum: { cycleCount: true },
-      }),
+        prisma.request.aggregate({
+          _sum: { cycleCount: true },
+        }),
 
-      prisma.readCounter.findUnique({ where: { id: 1 } }),
+        prisma.readCounter.findUnique({ where: { id: 1 } }),
 
-      prisma.chapter.count({
-        where: {
-          status: "read",
-          readAt: { gte: today },
-        },
-      }),
+        prisma.chapter.findMany({
+          where: {
+            status: "read",
+            readBy: { not: null },
+          },
+          select: { readBy: true },
+          distinct: ["readBy"],
+        }),
+      ]);
 
-      prisma.chapter.findMany({
-        where: {
-          status: "read",
-          readBy: { not: null },
-        },
-        select: { readBy: true },
-        distinct: ["readBy"],
-      }),
-    ]);
+    // 🔍 Ensure todayCount is only shown if todayDate is today
+    let chaptersReadToday = 0;
+    if (readRow?.todayDate) {
+      const lastUpdated = new Date(readRow.todayDate);
+      lastUpdated.setHours(0, 0, 0, 0);
+
+      if (lastUpdated.getTime() === today.getTime()) {
+        chaptersReadToday = readRow.todayCount;
+      }
+    }
 
     res.json({
       totalRequests,
@@ -401,6 +431,21 @@ router.get("/stats", async (req, res) => {
   } catch (err) {
     console.error("Failed to load stats:", err);
     res.status(500).json({ error: "Failed to load stats" });
+  }
+});
+
+router.delete("/admin/request/:id", adminAuth, async (req, res) => {
+  const requestId = parseInt(req.params.id);
+  if (!requestId) return res.status(400).json({ error: "Invalid request ID" });
+
+  try {
+    await prisma.chapter.deleteMany({ where: { requestId } });
+    await prisma.request.delete({ where: { id: requestId } });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Failed to delete request:", err);
+    res.status(500).json({ error: "Failed to delete request" });
   }
 });
 
