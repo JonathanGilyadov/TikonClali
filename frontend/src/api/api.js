@@ -1,10 +1,11 @@
+import { v4 as uuid } from "uuid";
 // src/api/api.js
 const API_BASE = "/api";
 
 const getAnonId = () => {
   let id = localStorage.getItem("anonUserId");
   if (!id) {
-    id = crypto.randomUUID();
+    id = uuid();
     localStorage.setItem("anonUserId", id);
   }
   return id;
