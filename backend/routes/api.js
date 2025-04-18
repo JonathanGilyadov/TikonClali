@@ -5,8 +5,9 @@ const fs = require("fs");
 const path = require("path");
 const { validateNewRequest, validateInt } = require("../utils/validate");
 const adminAuth = require("../middleware/adminAuth");
+const anonIdMiddleware = require("../middleware/anonIdMiddleware");
 
-router.get("/requests", async (req, res) => {
+router.get("/requests", anonIdMiddleware, async (req, res) => {
   try {
     const { search } = req.query;
 
@@ -51,7 +52,7 @@ router.get("/requests", async (req, res) => {
   }
 });
 
-router.post("/requests", async (req, res, next) => {
+router.post("/requests", anonIdMiddleware, async (req, res, next) => {
   const error = validateNewRequest(req.body);
   if (error) return res.status(400).json({ error });
 
@@ -93,7 +94,7 @@ router.post("/requests", async (req, res, next) => {
 });
 
 // GET /requests/:id
-router.get("/requests/:id", async (req, res, next) => {
+router.get("/requests/:id", anonIdMiddleware, async (req, res, next) => {
   try {
     const id = parseInt(req.params.id);
     const error = validateInt(id, "ID בקשה");
@@ -111,52 +112,56 @@ router.get("/requests/:id", async (req, res, next) => {
 });
 
 // POST /requests/:id/progress
-router.post("/requests/:id/progress", async (req, res, next) => {
-  const id = parseInt(req.params.id);
-  const error = validateInt(id, "ID בקשה");
-  if (error) return res.status(400).json({ error });
+router.post(
+  "/requests/:id/progress",
+  anonIdMiddleware,
+  async (req, res, next) => {
+    const id = parseInt(req.params.id);
+    const error = validateInt(id, "ID בקשה");
+    if (error) return res.status(400).json({ error });
 
-  const { chapterId } = req.body;
-  const chError = validateInt(chapterId, "פרק");
-  if (chError) return res.status(400).json({ error: chError });
+    const { chapterId } = req.body;
+    const chError = validateInt(chapterId, "פרק");
+    if (chError) return res.status(400).json({ error: chError });
 
-  try {
-    const request = await prisma.request.findUnique({ where: { id } });
-    if (!request) return res.status(404).json({ error: "הבקשה לא נמצאה" });
+    try {
+      const request = await prisma.request.findUnique({ where: { id } });
+      if (!request) return res.status(404).json({ error: "הבקשה לא נמצאה" });
 
-    const progressSet = new Set(JSON.parse(request.progress || "[]"));
-    progressSet.add(chapterId);
+      const progressSet = new Set(JSON.parse(request.progress || "[]"));
+      progressSet.add(chapterId);
 
-    const chapterIndices = JSON.parse(request.chapterIndices);
-    const chaptersRead = progressSet.size;
-    const totalChapters = chapterIndices.length;
+      const chapterIndices = JSON.parse(request.chapterIndices);
+      const chaptersRead = progressSet.size;
+      const totalChapters = chapterIndices.length;
 
-    let updatedProgress = Array.from(progressSet);
-    let updatedCycleCount = request.cycleCount;
+      let updatedProgress = Array.from(progressSet);
+      let updatedCycleCount = request.cycleCount;
 
-    if (chaptersRead >= totalChapters) {
-      updatedProgress = [];
-      updatedCycleCount += 1;
+      if (chaptersRead >= totalChapters) {
+        updatedProgress = [];
+        updatedCycleCount += 1;
+      }
+
+      const updated = await prisma.request.update({
+        where: { id },
+        data: {
+          progress: JSON.stringify(updatedProgress),
+          cycleCount: updatedCycleCount,
+        },
+      });
+
+      updated.chapterIndices = JSON.parse(updated.chapterIndices);
+      updated.progress = JSON.parse(updated.progress);
+      res.json(updated);
+    } catch (err) {
+      next(err);
     }
-
-    const updated = await prisma.request.update({
-      where: { id },
-      data: {
-        progress: JSON.stringify(updatedProgress),
-        cycleCount: updatedCycleCount,
-      },
-    });
-
-    updated.chapterIndices = JSON.parse(updated.chapterIndices);
-    updated.progress = JSON.parse(updated.progress);
-    res.json(updated);
-  } catch (err) {
-    next(err);
-  }
-});
+  },
+);
 
 // GET /chapters
-router.get("/chapters", (req, res, next) => {
+router.get("/chapters", anonIdMiddleware, (req, res, next) => {
   try {
     const chaptersPath = path.join(__dirname, "../data/chapters.json");
 
@@ -173,151 +178,161 @@ router.get("/chapters", (req, res, next) => {
 });
 
 // POST /chapter/:id/release
-router.post("/chapter/:id/release", async function (req, res) {
-  const anonId = req.anonId;
-  const chapterId = parseInt(req.params.id);
-  const error = validateInt(chapterId, "ID פרק");
-  if (error) return res.status(400).json({ error });
+router.post(
+  "/chapter/:id/release",
+  anonIdMiddleware,
+  async function (req, res) {
+    const anonId = req.anonId;
+    const chapterId = parseInt(req.params.id);
+    const error = validateInt(chapterId, "ID פרק");
+    if (error) return res.status(400).json({ error });
 
-  try {
-    const chapter = await prisma.chapter.findUnique({
-      where: { id: chapterId },
-    });
-
-    if (!chapter || chapter.lockedBy !== anonId) {
-      return res.status(403).json({ error: "אין לך הרשאה לשחרר את הפרק הזה" });
-    }
-
-    const updated = await prisma.chapter.update({
-      where: { id: chapterId },
-      data: {
-        status: "released",
-        lockedBy: null,
-        lockedAt: null,
-      },
-    });
-
-    res.json(updated);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "שגיאת שרת" });
-  }
-});
-
-// POST /chapter/:id/complete
-// POST /chapter/:id/complete
-router.post("/chapter/:id/complete", async function (req, res) {
-  const anonId = req.anonId;
-  const chapterId = parseInt(req.params.id);
-  const error = validateInt(chapterId, "ID פרק");
-  if (error) return res.status(400).json({ error });
-
-  try {
-    const chapter = await prisma.chapter.findUnique({
-      where: { id: chapterId },
-    });
-
-    if (!chapter) {
-      return res.status(404).json({ error: "הפרק לא נמצא" });
-    }
-
-    if (chapter.status === "read") {
-      return res.status(200).json(chapter);
-    }
-
-    if (chapter.lockedBy !== anonId) {
-      return res.status(403).json({ error: "אין לך הרשאה לסמן את הפרק הזה" });
-    }
-
-    // ✅ Mark the chapter as read
-    await prisma.chapter.update({
-      where: { id: chapterId },
-      data: {
-        status: "read",
-        lockedBy: null,
-        lockedAt: null,
-        readAt: new Date(),
-        readBy: anonId,
-      },
-    });
-
-    // ✅ Update read counter
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const current = await prisma.readCounter.findUnique({ where: { id: 1 } });
-    const readersSet = new Set(JSON.parse(current?.readers || "[]"));
-    readersSet.add(anonId);
-
-    if (
-      !current ||
-      !current.todayDate ||
-      new Date(current.todayDate).getTime() !== today.getTime()
-    ) {
-      // It's a new day → reset todayCount
-      await prisma.readCounter.upsert({
-        where: { id: 1 },
-        update: {
-          count: { increment: 1 },
-          todayCount: 1,
-          todayDate: today,
-          readers: JSON.stringify(Array.from(readersSet)),
-        },
-        create: {
-          id: 1,
-          count: 1,
-          todayCount: 1,
-          todayDate: today,
-          readers: JSON.stringify(Array.from(readersSet)),
-        },
-      });
-    } else {
-      // Same day → increment todayCount
-      await prisma.readCounter.update({
-        where: { id: 1 },
-        data: {
-          count: { increment: 1 },
-          todayCount: { increment: 1 },
-          readers: JSON.stringify(Array.from(readersSet)),
-        },
-      });
-    }
-
-    // ✅ Check if all chapters are read — reset cycle if needed
-    const unreadCount = await prisma.chapter.count({
-      where: {
-        requestId: chapter.requestId,
-        status: { not: "read" },
-      },
-    });
-
-    if (unreadCount === 0) {
-      await prisma.request.update({
-        where: { id: chapter.requestId },
-        data: {
-          cycleCount: { increment: 1 },
-        },
+    try {
+      const chapter = await prisma.chapter.findUnique({
+        where: { id: chapterId },
       });
 
-      await prisma.chapter.updateMany({
-        where: { requestId: chapter.requestId },
+      if (!chapter || chapter.lockedBy !== anonId) {
+        return res
+          .status(403)
+          .json({ error: "אין לך הרשאה לשחרר את הפרק הזה" });
+      }
+
+      const updated = await prisma.chapter.update({
+        where: { id: chapterId },
         data: {
-          status: "unread",
+          status: "released",
           lockedBy: null,
           lockedAt: null,
         },
       });
-    }
 
-    res.json({ success: true });
-  } catch (err) {
-    console.error("Failed to complete chapter:", err);
-    res.status(500).json({ error: "שגיאת שרת" });
-  }
-});
+      res.json(updated);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "שגיאת שרת" });
+    }
+  },
+);
+
+// POST /chapter/:id/complete
+// POST /chapter/:id/complete
+router.post(
+  "/chapter/:id/complete",
+  anonIdMiddleware,
+  async function (req, res) {
+    const anonId = req.anonId;
+    const chapterId = parseInt(req.params.id);
+    const error = validateInt(chapterId, "ID פרק");
+    if (error) return res.status(400).json({ error });
+
+    try {
+      const chapter = await prisma.chapter.findUnique({
+        where: { id: chapterId },
+      });
+
+      if (!chapter) {
+        return res.status(404).json({ error: "הפרק לא נמצא" });
+      }
+
+      if (chapter.status === "read") {
+        return res.status(200).json(chapter);
+      }
+
+      if (chapter.lockedBy !== anonId) {
+        return res.status(403).json({ error: "אין לך הרשאה לסמן את הפרק הזה" });
+      }
+
+      // ✅ Mark the chapter as read
+      await prisma.chapter.update({
+        where: { id: chapterId },
+        data: {
+          status: "read",
+          lockedBy: null,
+          lockedAt: null,
+          readAt: new Date(),
+          readBy: anonId,
+        },
+      });
+
+      // ✅ Update read counter
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const current = await prisma.readCounter.findUnique({ where: { id: 1 } });
+      const readersSet = new Set(JSON.parse(current?.readers || "[]"));
+      readersSet.add(anonId);
+
+      if (
+        !current ||
+        !current.todayDate ||
+        new Date(current.todayDate).getTime() !== today.getTime()
+      ) {
+        // It's a new day → reset todayCount
+        await prisma.readCounter.upsert({
+          where: { id: 1 },
+          update: {
+            count: { increment: 1 },
+            todayCount: 1,
+            todayDate: today,
+            readers: JSON.stringify(Array.from(readersSet)),
+          },
+          create: {
+            id: 1,
+            count: 1,
+            todayCount: 1,
+            todayDate: today,
+            readers: JSON.stringify(Array.from(readersSet)),
+          },
+        });
+      } else {
+        // Same day → increment todayCount
+        await prisma.readCounter.update({
+          where: { id: 1 },
+          data: {
+            count: { increment: 1 },
+            todayCount: { increment: 1 },
+            readers: JSON.stringify(Array.from(readersSet)),
+          },
+        });
+      }
+
+      // ✅ Check if all chapters are read — reset cycle if needed
+      const unreadCount = await prisma.chapter.count({
+        where: {
+          requestId: chapter.requestId,
+          status: { not: "read" },
+        },
+      });
+
+      if (unreadCount === 0) {
+        await prisma.request.update({
+          where: { id: chapter.requestId },
+          data: {
+            cycleCount: { increment: 1 },
+          },
+        });
+
+        await prisma.chapter.updateMany({
+          where: { requestId: chapter.requestId },
+          data: {
+            status: "unread",
+            lockedBy: null,
+            lockedAt: null,
+          },
+        });
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to complete chapter:", err);
+      res.status(500).json({ error: "שגיאת שרת" });
+    }
+  },
+);
 
 // GET /request/:id/next-chapter
-router.get("/request/:id/next-chapter", async (req, res) => {
+router.get("/request/:id/next-chapter", anonIdMiddleware, async (req, res) => {
   const anonId = req.anonId;
   const requestId = parseInt(req.params.id);
   const error = validateInt(requestId, "ID בקשה");
@@ -393,7 +408,7 @@ router.get("/request/:id/next-chapter", async (req, res) => {
 
 // GET /stats
 // GET /stats
-router.get("/stats", async (req, res) => {
+router.get("/stats", anonIdMiddleware, async (req, res) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Midnight today
