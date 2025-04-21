@@ -1,3 +1,4 @@
+// src/pages/RequestReadingPage.js
 import React, { useEffect, useState } from "react";
 import {
   Container,
@@ -20,7 +21,7 @@ import {
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 
-const RequestReadingPage = () => {
+export default function RequestReadingPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -29,78 +30,68 @@ const RequestReadingPage = () => {
   const [requestInfo, setRequestInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [transitioning, setTransitioning] = useState(false);
+  const [released, setReleased] = useState(false);
   const [showSnackbar, setShowSnackbar] = useState(false);
   const [showCopied, setShowCopied] = useState(false);
   const [timeLeft, setTimeLeft] = useState(null);
   const [lockExpired, setLockExpired] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // 1) initial load
   useEffect(() => {
-    const loadAll = async () => {
+    const load = async () => {
       try {
-        const [chaptersJson, chapterData, request] = await Promise.all([
+        const [allChaps, nextChap, reqInfo] = await Promise.all([
           fetchChapters(),
           fetchNextChapter(id),
           fetchRequestById(id),
         ]);
-        setChaptersData(chaptersJson);
-        setChapter(chapterData);
-        setRequestInfo(request);
-        setErrorMessage("");
+        setChaptersData(allChaps);
+        setChapter(nextChap);
+        setRequestInfo(reqInfo);
       } catch (err) {
-        setChapter(null);
         setErrorMessage(err.message);
       } finally {
         setLoading(false);
       }
     };
-    loadAll();
+    load();
   }, [id]);
 
+  // 2) countdown
   useEffect(() => {
     if (!chapter?.lockedAt) return;
-
-    const lockedUntil = new Date(
-      new Date(chapter.lockedAt).getTime() + 20 * 60000,
-    );
-
-    const interval = setInterval(() => {
-      const diff = lockedUntil.getTime() - Date.now();
-
+    const until = new Date(new Date(chapter.lockedAt).getTime() + 20 * 60000);
+    const iv = setInterval(() => {
+      const diff = until.getTime() - Date.now();
       if (diff <= 0) {
-        setTimeLeft(0);
         setLockExpired(true);
-        clearInterval(interval);
+        clearInterval(iv);
       } else {
         setTimeLeft(diff);
       }
     }, 1000);
-
-    return () => clearInterval(interval);
+    return () => clearInterval(iv);
   }, [chapter?.lockedAt]);
 
-  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
+  // 3) complete handler
   const handleComplete = async () => {
+    setTransitioning(true);
     try {
-      setTransitioning(true);
-
       await completeChapter(chapter.id);
-      const [next, updatedRequest] = await Promise.all([
+      const [next, updatedReq] = await Promise.all([
         fetchNextChapter(id),
-        fetchRequestById(id), // 👈 fetch updated progress and cycle count
+        fetchRequestById(id),
       ]);
-
-      setRequestInfo(updatedRequest);
-
+      setRequestInfo(updatedReq);
       if (next) {
         setChapter(next);
+        setReleased(false);
         setLockExpired(false);
       } else {
         setChapter(null);
         setErrorMessage("🎉 כל הפרקים הושלמו בסבב זה!");
       }
-
       setShowSnackbar(true);
     } catch (err) {
       setErrorMessage(err.message);
@@ -109,11 +100,13 @@ const RequestReadingPage = () => {
     }
   };
 
+  // 4) release-only handler (the 👍 for “אין לי זמן”)
   const handleReleaseOnly = async () => {
+    setTransitioning(true);
     try {
-      setTransitioning(true);
-      await releaseChapter(chapter.id);
-      setChapter(null);
+      const updated = await releaseChapter(chapter.id);
+      setChapter(updated); // <-- keep chapter in place
+      setReleased(true); // <-- disable buttons + show inline msg
       setShowSnackbar(true);
     } catch (err) {
       setErrorMessage(err.message);
@@ -122,118 +115,111 @@ const RequestReadingPage = () => {
     }
   };
 
+  // 5) release + next
   const handleReleaseAndNext = async () => {
+    setTransitioning(true);
     try {
-      setTransitioning(true);
-
-      const next = await fetchNextChapter(id); // 👈 fetch first
-      await releaseChapter(chapter.id); // 👈 then release this one
-
+      const next = await fetchNextChapter(id);
+      await releaseChapter(chapter.id);
       if (next) {
         setChapter(next);
+        setReleased(false);
         setLockExpired(false);
       } else {
         setChapter(null);
         setErrorMessage("אין כרגע פרקים זמינים נוספים");
       }
-    } catch (err) {
-      setChapter(null);
+    } catch {
       setErrorMessage("לא ניתן להשיג פרק חדש");
     } finally {
       setTransitioning(false);
     }
   };
 
+  // 6) share helpers
   const handleShare = () => {
-    const url = `${window.location.origin}/read/${id}`;
-    navigator.clipboard.writeText(url).then(() => {
-      setShowCopied(true);
-    });
+    navigator.clipboard
+      .writeText(`${window.location.origin}/read/${id}`)
+      .then(() => setShowCopied(true));
   };
-
   const handleWhatsAppShare = () => {
     const url = `${window.location.origin}/read/${id}`;
-    const text = `תיקון כללי - לחצו לקריאה: ${url}`;
-    const shareUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(shareUrl, "_blank");
+    window.open(
+      `https://wa.me/?text=${encodeURIComponent(
+        `תיקון כללי - לחצו לקריאה: ${url}`,
+      )}`,
+      "_blank",
+    );
   };
 
   const chapterContent =
-    chapter && chaptersData.length > 0 ? chaptersData[chapter.number] : null;
+    chapter && chaptersData.length > 0 && chaptersData[chapter.number];
 
   return (
     <Container maxWidth="sm" sx={{ mt: 4 }}>
       <Paper sx={{ p: 4 }}>
+        {/* header */}
         {requestInfo && (
           <>
-            <Typography variant="h5" gutterBottom align="center">
+            <Typography variant="h5" align="center">
               קריאת פרק עבור {requestInfo.name}
             </Typography>
-
             <Typography
               variant="subtitle1"
               align="center"
               color="text.secondary"
-              gutterBottom
             >
               🎯 מטרה: {requestInfo.purpose}
             </Typography>
-
             {requestInfo.notes && (
               <Typography
-                variant="body1"
-                align="center"
-                sx={{ mb: 2, whiteSpace: "pre-line" }}
+                variant="body2"
                 color="text.secondary"
+                align="center"
+                sx={{ whiteSpace: "pre-line", mb: 2 }}
               >
                 📝 {requestInfo.notes}
               </Typography>
             )}
-
             <Typography align="center" color="text.secondary" sx={{ mb: 2 }}>
-              📚 מספר סבבי קריאה שהושלמו: {requestInfo.cycleCount}
+              📚 סבבים הושלמו: {requestInfo.cycleCount}
             </Typography>
           </>
         )}
 
-        {errorMessage && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {errorMessage}
-          </Alert>
-        )}
+        {errorMessage && <Alert severity="error">{errorMessage}</Alert>}
 
+        {/* loading / countdown */}
         {loading || transitioning ? (
           <Box textAlign="center" sx={{ mt: 4 }}>
             <CircularProgress />
-            <Typography sx={{ mt: 2, mb: 2 }}>
-              {loading ? "טוען פרק לקריאה..." : "טוען פרק חדש..."}
+            <Typography sx={{ mt: 2 }}>
+              {loading ? "טוען פרק..." : "מעבד..."}
             </Typography>
           </Box>
         ) : chapter && chapterContent ? (
           lockExpired ? (
             <Box textAlign="center">
               <Typography variant="h6" sx={{ mb: 2 }}>
-                ⏰ זמן הקריאה של הפרק נגמר.
-              </Typography>
-              <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-                יתכן שמישהו אחר נעל את הפרק. תוכל לנסות לנעול אותו מחדש.
+                ⏰ זמן הקריאה נגמר
               </Typography>
               <Button
                 variant="contained"
-                onClick={() => handleReleaseAndNext()}
+                onClick={handleReleaseAndNext}
+                disabled={transitioning}
               >
-                🔁 נסה לנעול פרק חדש
+                🔄 נסה פרק חדש
               </Button>
             </Box>
           ) : (
             <>
-              {timeLeft !== null && (
+              {timeLeft != null && (
                 <Typography
                   align="center"
                   color="text.secondary"
                   sx={{ mb: 2 }}
                 >
-                  זמן שנותר לנעילה: {Math.floor(timeLeft / 60000)}:
+                  זמן לנעילה: {Math.floor(timeLeft / 60000)}:
                   {String(Math.floor((timeLeft % 60000) / 1000)).padStart(
                     2,
                     "0",
@@ -246,8 +232,8 @@ const RequestReadingPage = () => {
               </Typography>
               <Typography
                 variant="subtitle1"
-                color="text.secondary"
                 align="center"
+                color="text.secondary"
                 gutterBottom
               >
                 {chapterContent.mizmor}
@@ -260,30 +246,43 @@ const RequestReadingPage = () => {
                 {chapterContent.content}
               </Typography>
 
+              {/* actions */}
               <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 <Button
                   variant="contained"
                   color="success"
                   onClick={handleComplete}
+                  disabled={transitioning || released}
                 >
                   סיימתי לקרוא ✅
                 </Button>
+
                 <Button
                   variant="outlined"
                   color="warning"
                   onClick={handleReleaseAndNext}
+                  disabled={transitioning || released}
                 >
                   חפש לי פרק אחר 🔄
                 </Button>
+
                 <Button
                   variant="outlined"
                   color="error"
                   onClick={handleReleaseOnly}
+                  disabled={transitioning || released}
                 >
                   אין לי זמן עכשיו, שחרר פרק זה ❌
                 </Button>
+
+                {released && (
+                  <Typography align="center" color="info.main" sx={{ mt: 1 }}>
+                    הפרק שוחרר בהצלחה
+                  </Typography>
+                )}
               </Box>
 
+              {/* share */}
               <Box
                 sx={{
                   display: "flex",
@@ -332,7 +331,7 @@ const RequestReadingPage = () => {
           severity="info"
           sx={{ width: "100%" }}
         >
-          ✔ הפרק שוחרר בהצלחה!
+          ✔ פעולה בוצעה!
         </Alert>
       </Snackbar>
 
@@ -352,6 +351,4 @@ const RequestReadingPage = () => {
       </Snackbar>
     </Container>
   );
-};
-
-export default RequestReadingPage;
+}
