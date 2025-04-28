@@ -19,7 +19,6 @@ const Header = () => {
       position="static"
       elevation={1}
       sx={{
-        backgroundColor: "#2E7D32",
         borderRadius: 0,
         boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
         padding: "0 16px",

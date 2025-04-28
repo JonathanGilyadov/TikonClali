@@ -15,10 +15,10 @@ export const theme = createTheme({
   },
   palette: {
     primary: {
-      main: "#2E7D32", // deep green
+      main: "#1565C0", // deep blue
     },
     secondary: {
-      main: "#1565C0", // deep blue
+      main: "#2E7D32", // deep green
     },
     background: {
       default: "#F7FAFC",
