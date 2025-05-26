@@ -35,7 +35,7 @@ const Header = () => {
           }}
         >
           <Typography variant="h6" component="div" fontWeight={600}>
-            תיקון כללי
+            תיקון הכללי ביחד
           </Typography>
 
           <Box sx={{ display: "flex", gap: 2 }}>

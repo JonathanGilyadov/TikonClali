@@ -45,7 +45,8 @@ const App = () => (
             האתר נבנה על ידי Tech Systems
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            © {new Date().getFullYear()} תיקון כללי. כל הזכויות שמורות.
+            © {new Date().getFullYear()} תיקון הכללי ביחד. כל הזכויות שמורות גמח
+            חסד מה'.
           </Typography>
         </Box>
       </Box>

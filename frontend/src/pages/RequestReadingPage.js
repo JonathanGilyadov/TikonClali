@@ -146,7 +146,7 @@ export default function RequestReadingPage() {
     const url = `${window.location.origin}/read/${id}`;
     window.open(
       `https://wa.me/?text=${encodeURIComponent(
-        `תיקון כללי - לחצו לקריאה: ${url}`,
+        `תיקון הכללי ביחד - לחצו לקריאה: ${url}`,
       )}`,
       "_blank",
     );
@@ -157,6 +157,33 @@ export default function RequestReadingPage() {
 
   return (
     <Container maxWidth="sm" sx={{ mt: 4 }}>
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="300px" // or 100vh for full page
+        sx={{
+          mb: 4,
+          w: "100%",
+        }}
+      >
+        <Box
+          component="img"
+          src="/quote2.jpg"
+          alt="Centered image"
+          sx={{
+            width: "100%",
+            height: "300px",
+
+            borderRadius: 2,
+
+            objectFit: "cover",
+            // borderRadius: 2,
+            // boxShadow: 3,
+          }}
+        />
+      </Box>
+
       <Paper sx={{ p: 4 }}>
         {/* header */}
         {requestInfo && (

@@ -138,6 +138,28 @@ const CreateRequestPage = () => {
         </Box>
       </Paper>
 
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="300px" // or 100vh for full page
+        sx={{
+          mb: 4,
+        }}
+      >
+        <Box
+          component="img"
+          src="fountain.jpg"
+          alt="Centered image"
+          sx={{
+            // width: "100%",
+            objectFit: "cover",
+            // borderRadius: 2,
+            // boxShadow: 3,
+          }}
+        />
+      </Box>
+
       <Snackbar
         open={showSuccess}
         autoHideDuration={4000}

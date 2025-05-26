@@ -71,10 +71,31 @@ const HomePage = () => {
 
   return (
     <Container maxWidth="md" sx={{ mt: 6 }}>
-      <Typography variant="h4" align="center" gutterBottom>
-        תיקון כללי - קריאת פרקים למען אחרים
-      </Typography>
+      {/* <Typography variant="h4" align="center" gutterBottom>
+        תיקון הכללי ביחד - קריאת פרקים למען אחרים
+      </Typography> */}
 
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="300px" // or 100vh for full page
+        sx={{
+          mb: 4,
+        }}
+      >
+        <Box
+          component="img"
+          src="main.jpg"
+          alt="Centered image"
+          sx={{
+            // width: "100%",
+            objectFit: "cover",
+            // borderRadius: 2,
+            // boxShadow: 3,
+          }}
+        />
+      </Box>
       {errorMessage && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {errorMessage}
@@ -133,6 +154,29 @@ const HomePage = () => {
       </Typography>
 
       <RequestTable requests={requests} chapters={chapters} />
+
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="300px" // or 100vh for full page
+        sx={{
+          mt: 4,
+          w: "100%",
+        }}
+      >
+        <Box
+          component="img"
+          src="quote.jpg"
+          alt="Centered image"
+          sx={{
+            width: "100%",
+            objectFit: "cover",
+            // borderRadius: 2,
+            // boxShadow: 3,
+          }}
+        />
+      </Box>
     </Container>
   );
 };
