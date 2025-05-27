@@ -82,6 +82,7 @@ const HomePage = () => {
         minHeight="300px" // or 100vh for full page
         sx={{
           mb: 4,
+          w: "100%",
         }}
       >
         <Box
@@ -89,8 +90,9 @@ const HomePage = () => {
           src="main.jpg"
           alt="Centered image"
           sx={{
-            // width: "100%",
-            objectFit: "cover",
+            width: { xs: "100%", sm: "60%" },
+            objectFit: "fill",
+            // height: "300px",
             // borderRadius: 2,
             // boxShadow: 3,
           }}

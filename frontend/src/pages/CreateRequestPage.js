@@ -143,8 +143,9 @@ const CreateRequestPage = () => {
         justifyContent="center"
         alignItems="center"
         minHeight="300px" // or 100vh for full page
+        width="100%"
         sx={{
-          mb: 4,
+          my: 4,
         }}
       >
         <Box
@@ -152,10 +153,10 @@ const CreateRequestPage = () => {
           src="fountain.jpg"
           alt="Centered image"
           sx={{
-            // width: "100%",
+            width: "100%",
             objectFit: "cover",
+
             // borderRadius: 2,
-            // boxShadow: 3,
           }}
         />
       </Box>
