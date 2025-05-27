@@ -21,7 +21,9 @@ const RequestRow = ({ request, chapters }) => {
     <TableRow>
       <TableCell>{request.name}</TableCell>
       <TableCell>{request.purpose}</TableCell>
-      <TableCell>{request.notes || "—"}</TableCell>
+      <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+        {request.notes || "—"}
+      </TableCell>
       <TableCell>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <Box sx={{ width: "100%", transform: "scaleX(-1)" }}>

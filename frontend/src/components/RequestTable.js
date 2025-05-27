@@ -18,7 +18,12 @@ const RequestTable = ({ requests, chapters }) => {
           <TableRow>
             <TableCell>שם</TableCell>
             <TableCell>מטרה</TableCell>
-            <TableCell>הערות</TableCell>
+            <TableCell
+              TableCell
+              sx={{ display: { xs: "none", sm: "table-cell" } }}
+            >
+              הערות
+            </TableCell>
             <TableCell>התקדמות</TableCell>
             <TableCell align="center">סבבים שהושלמו</TableCell>{" "}
             {/* <- UPDATED */}
